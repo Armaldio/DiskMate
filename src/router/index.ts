@@ -4,7 +4,7 @@ import HomeView from '../views/HomeView.vue'
 import ConnectView from '../views/ConnectView.vue'
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     { path: '/', name: 'home', component: HomeView },
     { path: '/connect', name: 'connect', component: ConnectView },
