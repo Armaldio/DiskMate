@@ -20,6 +20,15 @@ function handle(e: unknown) {
   error.value = e instanceof Error ? e.message : String(e)
 }
 
+async function reloadNextUp() {
+  if (!connection.value) return
+  try {
+    nextUp.value = await fetchNextUp(connection.value)
+  } catch (e) {
+    handle(e)
+  }
+}
+
 onMounted(async () => {
   if (!connection.value) return
   try {
@@ -39,10 +48,23 @@ onMounted(async () => {
 </script>
 
 <template>
+  <van-search
+    shape="round"
+    readonly
+    placeholder="Search for movies, shows, games…"
+    background="transparent"
+    class="searchbar"
+    @click-input="$router.push({ name: 'search' })"
+  />
   <section v-if="nextUp.length" class="rail">
-    <h2>Next up</h2>
-    <div class="row">
-      <NextEpisodeCard v-for="(ep, i) in nextUp" :key="`${ep.showTitle}${ep.episodeCode}${i}`" :ep="ep" />
+    <h2>Next episodes</h2>
+    <div class="next-list">
+      <NextEpisodeCard
+        v-for="ep in nextUp"
+        :key="`${ep.mediaId}-${ep.episodeCode}`"
+        :ep="ep"
+        @seen="reloadNextUp"
+      />
     </div>
   </section>
   <h1>Trending</h1>

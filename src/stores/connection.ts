@@ -1,13 +1,10 @@
 import { computed, ref } from 'vue'
-import { LEGACY_SCOPES, REQUIRED_SCOPES } from '../api/scopes'
 
 const KEY = 'diskmate.connection'
 
 export interface Connection {
   baseUrl: string
   token: string
-  /** Permissions the user was told to grant when this token was set up. */
-  scopes?: string[]
 }
 
 function load(): Connection | null {
@@ -23,12 +20,9 @@ const connection = ref<Connection | null>(load())
 /** Scopes a request reported as missing (403) this session. */
 const reportedMissing = ref<string[]>([])
 
-const missingScopes = computed(() => {
-  if (!connection.value) return []
-  const granted = new Set(connection.value.scopes ?? LEGACY_SCOPES)
-  const need = new Set([...REQUIRED_SCOPES, ...reportedMissing.value])
-  return [...need].filter((s) => reportedMissing.value.includes(s) || !granted.has(s)).sort()
-})
+// Floppy doesn't expose a token's scopes, so we can't know them up front. Only trust what
+// Floppy itself tells us: a 403 on a call that needs a scope means the token lacks it.
+const missingScopes = computed(() => (connection.value ? [...reportedMissing.value].sort() : []))
 
 export function normalizeUrl(url: string): string {
   let u = url.trim().replace(/\/+$/, '')
@@ -48,7 +42,6 @@ export function useConnection() {
       connection.value = {
         baseUrl: normalizeUrl(c.baseUrl),
         token: c.token.trim(),
-        scopes: [...REQUIRED_SCOPES],
       }
       reportedMissing.value = []
       localStorage.setItem(KEY, JSON.stringify(connection.value))
