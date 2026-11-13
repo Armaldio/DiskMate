@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { InsufficientScopeError } from '../api/scopes'
 import { fetchDiscover, type Rail } from '../api/floppy'
 import { useConnection } from '../stores/connection'
 import MediaCard from '../components/MediaCard.vue'
 
-const { connection } = useConnection()
+const { connection, reportMissingScopes } = useConnection()
 const rails = ref<Rail[]>([])
 const loading = ref(true)
 const error = ref('')
@@ -14,6 +15,11 @@ onMounted(async () => {
   try {
     rails.value = await fetchDiscover(connection.value)
   } catch (e) {
+    if (e instanceof InsufficientScopeError) {
+      reportMissingScopes(e.scopes) // the banner explains how to fix it
+      error.value = 'Missing permissions — see above.'
+      return
+    }
     error.value = e instanceof Error ? e.message : String(e)
   } finally {
     loading.value = false

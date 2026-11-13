@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
+import ScopeBanner from './components/ScopeBanner.vue'
 import { useConnection } from './stores/connection'
 
 const router = useRouter()
@@ -19,5 +20,6 @@ function disconnect() {
       <button class="ghost" @click="disconnect">Disconnect</button>
     </div>
   </header>
+  <ScopeBanner />
   <main><RouterView /></main>
 </template>

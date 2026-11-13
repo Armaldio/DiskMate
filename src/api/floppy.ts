@@ -1,4 +1,5 @@
 import type { Connection } from '../stores/connection'
+import { FEATURE_SCOPES, InsufficientScopeError } from './scopes'
 
 export interface MediaItem {
   mediaType: string
@@ -15,7 +16,11 @@ export interface Rail {
   items: MediaItem[]
 }
 
-async function request(conn: Connection, path: string): Promise<unknown> {
+async function request(
+  conn: Connection,
+  path: string,
+  scopes: readonly string[],
+): Promise<unknown> {
   const res = await fetch(`${conn.baseUrl}${path}`, {
     headers: {
       Accept: 'application/json',
@@ -23,7 +28,8 @@ async function request(conn: Connection, path: string): Promise<unknown> {
       'X-API-Key': conn.token,
     },
   })
-  if (res.status === 401 || res.status === 403) throw new Error('Invalid API token')
+  if (res.status === 401) throw new Error('Invalid API token')
+  if (res.status === 403) throw new InsufficientScopeError([...scopes])
   if (!res.ok) throw new Error(`Floppy responded with HTTP ${res.status}`)
   return res.json()
 }
@@ -31,7 +37,7 @@ async function request(conn: Connection, path: string): Promise<unknown> {
 /** Verifies URL + token. Network/CORS failures get a friendlier message. */
 export async function testConnection(conn: Connection): Promise<void> {
   try {
-    await request(conn, '/api/v1/user/preferences/')
+    await request(conn, '/api/v1/user/preferences/', FEATURE_SCOPES.connection)
   } catch (e) {
     if (e instanceof TypeError) {
       throw new Error(
@@ -47,7 +53,7 @@ type Json = Record<string, unknown>
 /** GET /api/v1/discover/ → curated rows such as "Trending Right Now". */
 export async function fetchDiscover(conn: Connection, mediaType?: string): Promise<Rail[]> {
   const q = mediaType ? `?media_type=${encodeURIComponent(mediaType)}` : ''
-  const data = (await request(conn, `/api/v1/discover/${q}`)) as Json
+  const data = (await request(conn, `/api/v1/discover/${q}`, FEATURE_SCOPES.discover)) as Json
   const rows = Array.isArray(data.rows) ? (data.rows as Json[]) : []
   return rows
     .map((row, i): Rail => {

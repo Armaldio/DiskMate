@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import TokenHelp from '../components/TokenHelp.vue'
 import { testConnection } from '../api/floppy'
 import { normalizeUrl, useConnection } from '../stores/connection'
 
@@ -8,14 +9,14 @@ const router = useRouter()
 const { connection, save } = useConnection()
 const baseUrl = ref(connection.value?.baseUrl ?? '')
 const token = ref(connection.value?.token ?? '')
-// Deep link to the page in Floppy where the API token lives.
-const tokenUrl = computed(() => {
+// Normalized instance URL once it looks real enough to link to.
+const instanceUrl = computed(() => {
   const raw = baseUrl.value.trim()
   if (!raw) return ''
   try {
     const u = new URL(normalizeUrl(raw))
     if (!u.hostname.includes('.') && u.hostname !== 'localhost') return ''
-    return `${normalizeUrl(raw)}/settings/integrations`
+    return normalizeUrl(raw)
   } catch {
     return ''
   }
@@ -54,23 +55,7 @@ async function submit() {
       API token
       <input v-model="token" type="password" autocomplete="off" required />
     </label>
-    <div v-if="tokenUrl" class="muted help">
-      <p>
-        <a :href="tokenUrl" target="_blank" rel="noopener noreferrer">Open your Floppy integrations settings</a>,
-        then:
-      </p>
-      <ol>
-        <li>Under <strong>App tokens</strong>, expand <strong>Create an app token</strong>, name it "DiskMate" and create it.</li>
-        <li>
-          Grant at least <code>user:read</code> and <code>catalog:read</code>. DiskMate only reads
-          (trending and connection check) so far; add <code>watchlist:*</code> / <code>progress:*</code> later when tracking is added.
-        </li>
-        <li>Copy the <code>flp_…</code> token (shown once) and paste it above.</li>
-      </ol>
-      <p>
-        Don't use the top-level <strong>Jeton d'API / API token</strong>: it's the full-access webhook token for your account.
-      </p>
-    </div>
+    <TokenHelp v-if="instanceUrl" :base-url="instanceUrl" />
     <p v-if="error" class="error">{{ error }}</p>
     <button :disabled="busy">{{ busy ? 'Testing…' : 'Connect' }}</button>
   </form>
