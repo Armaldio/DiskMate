@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { testConnection } from '../api/floppy'
 import { normalizeUrl, useConnection } from '../stores/connection'
@@ -8,6 +8,18 @@ const router = useRouter()
 const { connection, save } = useConnection()
 const baseUrl = ref(connection.value?.baseUrl ?? '')
 const token = ref(connection.value?.token ?? '')
+// Deep link to the page in Floppy where the API token lives.
+const tokenUrl = computed(() => {
+  const raw = baseUrl.value.trim()
+  if (!raw) return ''
+  try {
+    const u = new URL(normalizeUrl(raw))
+    if (!u.hostname.includes('.') && u.hostname !== 'localhost') return ''
+    return `${normalizeUrl(raw)}/settings/integrations`
+  } catch {
+    return ''
+  }
+})
 const busy = ref(false)
 const error = ref('')
 
@@ -42,6 +54,11 @@ async function submit() {
       API token
       <input v-model="token" type="password" autocomplete="off" required />
     </label>
+    <p v-if="tokenUrl" class="muted">
+      Need a token?
+      <a :href="tokenUrl" target="_blank" rel="noopener noreferrer">Open your Floppy integrations settings</a>
+      and copy it from there.
+    </p>
     <p v-if="error" class="error">{{ error }}</p>
     <button :disabled="busy">{{ busy ? 'Testing…' : 'Connect' }}</button>
   </form>
