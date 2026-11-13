@@ -30,7 +30,7 @@ async function reloadNextUp() {
 }
 
 onMounted(async () => {
-  if (!connection.value) return
+  if (!connection.value || connection.value.localOnly) return
   try {
     // Independent sections: one failing (e.g. missing scope) must not hide the other.
     const [next, discover] = await Promise.allSettled([

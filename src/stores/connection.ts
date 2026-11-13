@@ -3,8 +3,13 @@ import { computed, ref } from 'vue'
 const KEY = 'diskmate.connection'
 
 export interface Connection {
+  /** Public or primary Floppy URL. */
   baseUrl: string
   token: string
+  /** Optional Floppy address reachable on the local network. */
+  localBaseUrl?: string
+  /** When enabled, every API request uses the local address only. */
+  localOnly?: boolean
 }
 
 function load(): Connection | null {
@@ -40,10 +45,23 @@ export function useConnection() {
     isConnected: computed(() => connection.value !== null),
     save(c: Connection) {
       connection.value = {
-        baseUrl: normalizeUrl(c.baseUrl),
+        baseUrl: c.baseUrl.trim() ? normalizeUrl(c.baseUrl) : '',
         token: c.token.trim(),
+        ...(c.localBaseUrl ? { localBaseUrl: normalizeUrl(c.localBaseUrl) } : {}),
+        localOnly: c.localOnly ?? false,
       }
       reportedMissing.value = []
+      localStorage.setItem(KEY, JSON.stringify(connection.value))
+    },
+    saveLocalMode(localBaseUrl: string, localOnly: boolean) {
+      if (!connection.value) return
+      const local = localBaseUrl.trim()
+      if (localOnly && !local) throw new Error('Enter your local Floppy address first.')
+      connection.value = {
+        ...connection.value,
+        localBaseUrl: local ? normalizeUrl(local) : undefined,
+        localOnly,
+      }
       localStorage.setItem(KEY, JSON.stringify(connection.value))
     },
     clear() {

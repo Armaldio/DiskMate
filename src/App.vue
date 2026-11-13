@@ -2,7 +2,7 @@
 import ScopeBanner from './components/ScopeBanner.vue'
 import { useConnection } from './stores/connection'
 
-const { isConnected } = useConnection()
+const { connection, isConnected } = useConnection()
 </script>
 
 <template>
@@ -12,14 +12,15 @@ const { isConnected } = useConnection()
       DiskMate
     </RouterLink>
     <div v-if="isConnected" class="bar-actions">
-      <RouterLink :to="{ name: 'search' }" class="icon-btn" aria-label="Search">
+      <RouterLink v-if="!connection?.localOnly" :to="{ name: 'search' }" class="icon-btn" aria-label="Search">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       </RouterLink>
+      <RouterLink v-else :to="{ name: 'library' }" class="local-nav">Library</RouterLink>
       <RouterLink :to="{ name: 'settings' }" class="icon-btn" aria-label="Settings">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
       </RouterLink>
     </div>
   </header>
   <ScopeBanner />
-  <main><RouterView /></main>
+  <main><RouterView :key="`${connection?.localOnly ? 'local' : 'remote'}:${connection?.localOnly ? connection?.localBaseUrl : connection?.baseUrl}`" /></main>
 </template>

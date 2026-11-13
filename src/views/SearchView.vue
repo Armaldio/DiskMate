@@ -63,12 +63,13 @@ async function search() {
   controller?.abort() // cancel the previous search so it stops loading the server
   controller = new AbortController()
   const { signal } = controller
-  if (!q || !connection.value) {
+  if (!q || !connection.value || connection.value.localOnly) {
     results.value = []
     groups.value = []
     failedKinds.value = []
     searched.value = false
     loading.value = false
+    if (connection.value?.localOnly) error.value = 'Provider search is unavailable in local-only mode. Browse your library instead.'
     return
   }
   loading.value = true

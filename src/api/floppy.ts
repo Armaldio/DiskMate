@@ -1,4 +1,5 @@
 import type { Connection } from '../stores/connection'
+import { localImageUrl, localizeImageFields } from '../utils/localImage'
 import { FEATURE_SCOPES, InsufficientScopeError } from './scopes'
 
 export interface MediaItem {
@@ -25,8 +26,11 @@ async function request(
   scopes: readonly string[],
   init: { method?: string; body?: unknown; signal?: AbortSignal } = {},
 ): Promise<unknown> {
-  const res = await fetch(`${conn.baseUrl}${path}`, {
+  const baseUrl = conn.localOnly ? conn.localBaseUrl : conn.baseUrl
+  if (!baseUrl) throw new Error('Set a local Floppy address before using local-only mode.')
+  const options: RequestInit = {
     method: init.method ?? 'GET',
+    redirect: conn.localOnly ? 'error' : 'follow',
     signal: init.signal,
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
     headers: {
@@ -37,7 +41,13 @@ async function request(
       Authorization: `Bearer ${conn.token}`,
       'X-API-Key': conn.token,
     },
-  })
+  }
+  if (conn.localOnly) {
+    const hostname = new URL(baseUrl).hostname.replace(/^\[|\]$/g, '')
+    const loopback = hostname === 'localhost' || hostname.endsWith('.localhost') || hostname === '::1' || hostname.startsWith('127.')
+    Object.assign(options, { targetAddressSpace: loopback ? 'loopback' : 'local' })
+  }
+  const res = await fetch(`${baseUrl}${path}`, options)
   if (res.status === 401) throw new Error('Invalid API token')
   if (res.status === 403) throw new InsufficientScopeError([...scopes])
   if (!res.ok) throw new Error(`Floppy responded with HTTP ${res.status}`)
@@ -52,7 +62,7 @@ export async function testConnection(conn: Connection): Promise<void> {
   } catch (e) {
     if (e instanceof TypeError) {
       throw new Error(
-        'Could not reach the instance (wrong URL, or CORS is blocking this origin).',
+        'Could not reach the instance (check the URL, browser local-network permission, redirects, and CORS settings).',
       )
     }
     throw e
@@ -77,7 +87,7 @@ export async function fetchDiscover(conn: Connection, mediaType?: string): Promi
               source: String(it.source ?? 'tmdb'),
               mediaId: String(it.media_id),
               title: String(it.title ?? 'Untitled'),
-              image: typeof it.image === 'string' ? it.image : null,
+              image: localImageUrl(it.image, conn),
               releaseDate: typeof it.release_date === 'string' ? it.release_date : null,
             },
           ]
@@ -132,8 +142,8 @@ async function fetchSeasonImages(conn: Connection): Promise<Map<string, string>>
     if (r.status !== 'fulfilled' || !Array.isArray(r.value.results)) continue
     for (const row of r.value.results as Json[]) {
       const item = (row.item ?? {}) as Json
-      if (typeof item.image === 'string' && item.image)
-        out.set(seasonKey(item.source, item.media_id, item.season_number), item.image)
+      const image = localImageUrl(item.image, conn)
+      if (image) out.set(seasonKey(item.source, item.media_id, item.season_number), image)
     }
   }
   return out
@@ -185,15 +195,13 @@ export async function fetchNextUp(conn: Connection): Promise<NextEpisode[]> {
             r.progress + r.total_episodes_left > 0
               ? r.progress / (r.progress + r.total_episodes_left)
               : null,
-          poster: str(item.image) ?? str(show.image),
+          poster: localImageUrl(str(item.image) ?? str(show.image), conn),
           seasonImage:
             seasonImages.get(seasonKey(item.source, item.media_id, next.season_number)) ?? null,
           // Prefer the season poster; fall back to the episode still, then the show image.
           image:
             seasonImages.get(seasonKey(item.source, item.media_id, next.season_number)) ??
-            str(next.image) ??
-            str(item.image) ??
-            str(show.image),
+            localImageUrl(str(next.image) ?? str(item.image) ?? str(show.image), conn),
           lastWatched: str(r.progressed_at),
         },
       ]
@@ -223,7 +231,7 @@ async function fetchSeasonImage(conn: Connection, e: NextEpisode): Promise<strin
     const img = [d?.image, item.image, (d?.season as Json | undefined)?.image].find(
       (v) => typeof v === 'string' && v,
     )
-    return (img as string | undefined) ?? null
+    return localImageUrl(img, conn)
   } catch {
     return null
   }
@@ -283,7 +291,7 @@ export async function fetchSeasonEpisodes(
         {
           number: n,
           title: pick('title') ?? pick('name'),
-          image: pick('image') ?? pick('still_path') ?? pick('still'),
+          image: localImageUrl(pick('image') ?? pick('still_path') ?? pick('still'), conn),
           airDate: pick('air_date') ?? pick('release_datetime'),
         },
       ]
@@ -397,6 +405,50 @@ function trackingStatus(consumptions: unknown): number | null {
   return list.includes(3) ? 3 : list[0]
 }
 
+/** GET /api/v1/media/ → tracked items, following only Floppy's same-origin `next` links. */
+export async function fetchLibrary(conn: Connection): Promise<MediaItem[]> {
+  const baseUrl = conn.localOnly ? conn.localBaseUrl : conn.baseUrl
+  if (!baseUrl) throw new Error('Set a local Floppy address before using local-only mode.')
+  const parsedBase = new URL(baseUrl)
+  const basePath = parsedBase.pathname.replace(/\/+$/, '')
+  const mediaPath = `${basePath}/api/v1/media/`
+  let pageUrl = new URL(`${mediaPath}?limit=200`, parsedBase.origin)
+  const seen = new Set<string>()
+  const items = new Map<string, MediaItem>()
+  const statuses = ['Watchlist', 'In progress', 'Paused', 'Completed', 'Dropped']
+
+  while (!seen.has(pageUrl.href)) {
+    seen.add(pageUrl.href)
+    const path = `${pageUrl.pathname.slice(basePath.length)}${pageUrl.search}`
+    const data = (await request(conn, path, FEATURE_SCOPES.library)) as Json
+    const rows = Array.isArray(data.results) ? (data.results as Json[]) : []
+    for (const row of rows) {
+      const item = (row.item ?? {}) as Json
+      const mediaType = item.media_type ?? row.media_type
+      const mediaId = item.media_id ?? row.media_id
+      if (mediaType == null || mediaId == null) continue
+      const source = String(item.source ?? row.source ?? 'tmdb')
+      const status = typeof row.status === 'number' ? row.status : trackingStatus(row.consumptions)
+      const normalized: MediaItem = {
+        mediaType: String(mediaType),
+        source,
+        mediaId: String(mediaId),
+        title: String(item.title ?? row.title ?? 'Untitled'),
+        image: localImageUrl(item.image, conn),
+        releaseDate: typeof item.release_date === 'string' ? item.release_date : null,
+        subtitle: status == null ? null : statuses[status] ?? 'Tracked',
+      }
+      items.set(`${normalized.mediaType}:${source}:${normalized.mediaId}`, normalized)
+    }
+
+    if (typeof data.next !== 'string' || !data.next) break
+    const nextUrl = new URL(data.next, pageUrl)
+    if (nextUrl.origin !== pageUrl.origin || nextUrl.pathname !== mediaPath) break
+    pageUrl = nextUrl
+  }
+  return [...items.values()]
+}
+
 export async function fetchMediaDetail(
   conn: Connection,
   mediaType: string,
@@ -419,7 +471,7 @@ export async function fetchMediaDetail(
             {
               id: String(p.person_id ?? p.name),
               name: str(p.name) as string,
-              image: str(p.image),
+              image: localImageUrl(p.image, conn),
               role: str(p.character) ?? str(p.job) ?? str(p.role) ?? str(p.known_for_department),
             },
           ]
@@ -430,8 +482,8 @@ export async function fetchMediaDetail(
     source: str(d.source) ?? source,
     mediaId: String(d.media_id ?? mediaId),
     title: str(d.title) ?? 'Untitled',
-    image: str(d.image),
-    backdrop: str(d.backdrop),
+    image: localImageUrl(d.image, conn),
+    backdrop: localImageUrl(d.backdrop, conn),
     synopsis: str(d.synopsis),
     genres: (Array.isArray(d.genres) ? d.genres : []).filter((g): g is string => typeof g === 'string'),
     score: num(d.score),
@@ -439,8 +491,8 @@ export async function fetchMediaDetail(
     imdbRating: num(d.imdb_rating),
     cast: people(d.cast),
     crew: people(d.crew),
-    details: obj(d.details),
-    related: obj(d.related),
+    details: localizeImageFields(obj(d.details), conn),
+    related: localizeImageFields(obj(d.related), conn),
     tracked: d.tracked === true,
     status: trackingStatus(d.consumptions),
     sourceUrl: str(d.source_url),
@@ -480,7 +532,7 @@ export async function searchMedia(
         source: typeof r.source === 'string' ? r.source : 'tmdb',
         mediaId: String(r.media_id),
         title: r.title,
-        image: typeof r.image === 'string' ? r.image : null,
+        image: localImageUrl(r.image, conn),
         releaseDate: typeof r.release_date === 'string' ? r.release_date : null,
         subtitle: subtitle || null,
       },

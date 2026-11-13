@@ -8,6 +8,7 @@ export const FEATURE_SCOPES = {
   discover: ['catalog:read'],
   nextUp: ['watchlist:read'],
   details: ['watchlist:read'],
+  library: ['watchlist:read'],
   search: ['catalog:read'],
   markWatched: ['watchlist:write'],
   watchlist: ['watchlist:write'],
