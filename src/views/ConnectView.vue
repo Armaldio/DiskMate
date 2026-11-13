@@ -43,7 +43,7 @@ async function submit() {
   <form class="panel" @submit.prevent="submit">
     <h1>Connect to Floppy</h1>
     <p class="muted">
-      Enter your instance address and an API token (create one in Floppy's settings).
+      Enter your instance address and an API token (an app token, created in Floppy's settings).
       Both are stored only in this browser.
     </p>
     <label>
@@ -54,11 +54,23 @@ async function submit() {
       API token
       <input v-model="token" type="password" autocomplete="off" required />
     </label>
-    <p v-if="tokenUrl" class="muted">
-      Need a token?
-      <a :href="tokenUrl" target="_blank" rel="noopener noreferrer">Open your Floppy integrations settings</a>
-      and copy it from there.
-    </p>
+    <div v-if="tokenUrl" class="muted help">
+      <p>
+        <a :href="tokenUrl" target="_blank" rel="noopener noreferrer">Open your Floppy integrations settings</a>,
+        then:
+      </p>
+      <ol>
+        <li>Under <strong>App tokens</strong>, expand <strong>Create an app token</strong>, name it "DiskMate" and create it.</li>
+        <li>
+          Grant at least <code>user:read</code> and <code>catalog:read</code>. DiskMate only reads
+          (trending and connection check) so far; add <code>watchlist:*</code> / <code>progress:*</code> later when tracking is added.
+        </li>
+        <li>Copy the <code>flp_…</code> token (shown once) and paste it above.</li>
+      </ol>
+      <p>
+        Don't use the top-level <strong>Jeton d'API / API token</strong>: it's the full-access webhook token for your account.
+      </p>
+    </div>
     <p v-if="error" class="error">{{ error }}</p>
     <button :disabled="busy">{{ busy ? 'Testing…' : 'Connect' }}</button>
   </form>

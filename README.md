@@ -11,4 +11,6 @@ npm run dev
 npm run build
 ```
 
+**Token:** in Floppy go to Settings → Integrations → *App tokens* → *Create an app token* and grant at least `user:read` and `catalog:read` (DiskMate is read-only for now). Don't use the full-access account API token at the top of that page.
+
 **CORS:** a browser calls your Floppy instance directly, so the instance (or a reverse proxy) must allow DiskMate's origin.

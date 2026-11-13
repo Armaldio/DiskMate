@@ -18,3 +18,7 @@ input { padding:.6rem; border-radius:6px; border:1px solid #333649; background:v
 .card img, .placeholder { width:140px; height:210px; object-fit:cover; border-radius:8px; background:var(--card); display:flex; align-items:center; justify-content:center; font-size:2rem; }
 .card figcaption { font-size:.85rem; margin-top:.4rem; }
 .card small { display:block; color:var(--muted); text-transform:uppercase; font-size:.7rem; }
+
+.help ol { margin: 0.5rem 0; padding-left: 1.25rem; }
+.help code { background: rgba(255, 255, 255, 0.08); padding: 0 0.25rem; border-radius: 3px; }
+.help a { color: inherit; }
