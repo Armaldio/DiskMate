@@ -6,6 +6,7 @@
 export const FEATURE_SCOPES = {
   connection: ['user:read'],
   discover: ['catalog:read'],
+  nextUp: ['watchlist:read'],
   // future, e.g.: tracking: ['watchlist:read', 'watchlist:write', 'progress:read', 'progress:write'],
 } as const satisfies Record<string, readonly string[]>
 

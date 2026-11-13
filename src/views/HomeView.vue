@@ -1,26 +1,37 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { InsufficientScopeError } from '../api/scopes'
-import { fetchDiscover, type Rail } from '../api/floppy'
+import { fetchDiscover, fetchNextUp, type NextEpisode, type Rail } from '../api/floppy'
 import { useConnection } from '../stores/connection'
+import NextEpisodeCard from '../components/NextEpisodeCard.vue'
 import MediaCard from '../components/MediaCard.vue'
 
 const { connection, reportMissingScopes } = useConnection()
+const nextUp = ref<NextEpisode[]>([])
 const rails = ref<Rail[]>([])
 const loading = ref(true)
 const error = ref('')
 
+function handle(e: unknown) {
+  if (e instanceof InsufficientScopeError) {
+    reportMissingScopes(e.scopes) // the banner explains how to fix it
+    return
+  }
+  error.value = e instanceof Error ? e.message : String(e)
+}
+
 onMounted(async () => {
   if (!connection.value) return
   try {
-    rails.value = await fetchDiscover(connection.value)
-  } catch (e) {
-    if (e instanceof InsufficientScopeError) {
-      reportMissingScopes(e.scopes) // the banner explains how to fix it
-      error.value = 'Missing permissions — see above.'
-      return
-    }
-    error.value = e instanceof Error ? e.message : String(e)
+    // Independent sections: one failing (e.g. missing scope) must not hide the other.
+    const [next, discover] = await Promise.allSettled([
+      fetchNextUp(connection.value),
+      fetchDiscover(connection.value),
+    ])
+    if (next.status === 'fulfilled') nextUp.value = next.value
+    else handle(next.reason)
+    if (discover.status === 'fulfilled') rails.value = discover.value
+    else handle(discover.reason)
   } finally {
     loading.value = false
   }
@@ -28,6 +39,12 @@ onMounted(async () => {
 </script>
 
 <template>
+  <section v-if="nextUp.length" class="rail">
+    <h2>Next up</h2>
+    <div class="row">
+      <NextEpisodeCard v-for="(ep, i) in nextUp" :key="`${ep.showTitle}${ep.episodeCode}${i}`" :ep="ep" />
+    </div>
+  </section>
   <h1>Trending</h1>
   <p v-if="loading" class="muted">Loading…</p>
   <p v-else-if="error" class="error">{{ error }}</p>

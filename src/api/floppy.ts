@@ -80,3 +80,58 @@ export async function fetchDiscover(conn: Connection, mediaType?: string): Promi
     })
     .filter((r) => r.items.length > 0)
 }
+
+export interface NextEpisode {
+  showTitle: string
+  mediaType: string
+  episodeCode: string | null
+  episodeTitle: string | null
+  airDate: string | null
+  episodesLeft: number | null
+  image: string | null
+  lastWatched: string | null
+}
+
+/**
+ * GET /api/v1/media/ → shows in progress that still have unwatched, released episodes,
+ * most recently watched first. Each entry's `next_episode` is the one after the last you checked.
+ */
+export async function fetchNextUp(conn: Connection): Promise<NextEpisode[]> {
+  const kinds = ['tv', 'anime']
+  const pages = await Promise.all(
+    kinds.map(async (kind) => {
+      const q = new URLSearchParams({
+        media_type: kind,
+        status: '1', // In progress
+        progress: 'not_caught_up',
+        sort: 'last_watched',
+        direction: 'desc',
+        limit: '30',
+      })
+      const data = (await request(conn, `/api/v1/media/?${q}`, FEATURE_SCOPES.nextUp)) as Json
+      return (Array.isArray(data.results) ? (data.results as Json[]) : []).map((r) => ({ kind, r }))
+    }),
+  )
+  return pages
+    .flat()
+    .flatMap(({ kind, r }): NextEpisode[] => {
+      const next = r.next_episode as Json | null
+      if (!next) return []
+      const item = (r.item ?? {}) as Json
+      const show = (r.show ?? {}) as Json
+      const str = (v: unknown) => (typeof v === 'string' && v ? v : null)
+      return [
+        {
+          showTitle: str(show.title) ?? str(item.title) ?? 'Untitled',
+          mediaType: str(item.media_type) ?? kind,
+          episodeCode: str(next.episode_code),
+          episodeTitle: str(next.title),
+          airDate: str(next.air_date),
+          episodesLeft: typeof r.episodes_left === 'number' ? r.episodes_left : null,
+          image: str(next.image) ?? str(item.image) ?? str(show.image),
+          lastWatched: str(r.progressed_at),
+        },
+      ]
+    })
+    .sort((a, b) => (b.lastWatched ?? '').localeCompare(a.lastWatched ?? ''))
+}
