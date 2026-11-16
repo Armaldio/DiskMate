@@ -1,6 +1,8 @@
 /** One accent colour per media type, used by <MediaIcon> and anywhere a type needs identifying. */
 export const MEDIA_COLORS: Record<string, string> = {
   every: '#7c8cff',
+  trending: '#ff922b',
+  next: '#4dabf7',
   movie: '#ff6b6b',
   tv: '#4dabf7',
   season: '#4dabf7',

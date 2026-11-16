@@ -10,6 +10,7 @@ import {
 } from '../api/floppy'
 import { InsufficientScopeError } from '../api/scopes'
 import { useConnection } from '../stores/connection'
+import { cacheKey, detailName, dropCached } from '../utils/swr'
 
 // Either a TV/anime episode (with its season's episodes) or a movie.
 const props = defineProps<{ ep?: NextEpisode; movie?: MediaItem }>()
@@ -180,6 +181,10 @@ async function submit() {
 }
 
 function onClosed() {
+  if (marked.value && connection.value) {
+    const t = props.movie ?? props.ep
+    if (t) dropCached(cacheKey(connection.value, detailName(props.movie ? 'movie' : t.mediaType, t.source ?? '', props.movie ? props.movie.mediaId : (props.ep?.mediaId ?? ''))))
+  }
   if (marked.value) emit('done')
   emit('close')
 }

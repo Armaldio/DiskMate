@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue'
+import { clearCache } from '../utils/swr'
 
 const KEY = 'diskmate.connection'
 
@@ -44,6 +45,7 @@ export function useConnection() {
     },
     isConnected: computed(() => connection.value !== null),
     save(c: Connection) {
+      clearCache() // another instance or token: never show the previous account's data
       connection.value = {
         baseUrl: c.baseUrl.trim() ? normalizeUrl(c.baseUrl) : '',
         token: c.token.trim(),
@@ -65,6 +67,7 @@ export function useConnection() {
       localStorage.setItem(KEY, JSON.stringify(connection.value))
     },
     clear() {
+      clearCache()
       connection.value = null
       localStorage.removeItem(KEY)
     },

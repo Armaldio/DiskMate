@@ -12,11 +12,14 @@ const sheetOpen = ref(false)
 const aired = computed(() =>
   props.ep.airDate ? new Date(props.ep.airDate).toLocaleDateString(undefined, { dateStyle: 'long' }) : null,
 )
-const to = computed(() =>
-  props.ep.mediaId && props.ep.source
-    ? { name: 'details', params: { mediaType: props.ep.mediaType, source: props.ep.source, mediaId: props.ep.mediaId } }
-    : undefined,
-)
+// The card is about one episode: open that episode (the show is one tap away from there).
+const to = computed(() => {
+  const { mediaId, source, mediaType, seasonNumber, episodeNumber } = props.ep
+  if (!mediaId || !source) return undefined
+  return seasonNumber != null && episodeNumber != null
+    ? { name: 'episode', params: { mediaType, source, mediaId, season: String(seasonNumber), episode: String(episodeNumber) } }
+    : { name: 'details', params: { mediaType, source, mediaId } }
+})
 const label = computed(() => `${props.ep.showTitle} ${props.ep.episodeCode ?? 'next episode'}`)
 </script>
 

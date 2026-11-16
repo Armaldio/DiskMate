@@ -12,6 +12,12 @@ export const FEATURE_SCOPES = {
   search: ['catalog:read'],
   markWatched: ['watchlist:write'],
   watchlist: ['watchlist:write'],
+  tagsRead: ['watchlist:read'],
+  tagsWrite: ['watchlist:write'],
+  listsRead: ['lists:read'],
+  listsWrite: ['lists:write'],
+  seerrRead: ['catalog:read'],
+  seerrWrite: ['catalog:write'],
   // future, e.g.: tracking: ['watchlist:read', 'watchlist:write', 'progress:read', 'progress:write'],
 } as const satisfies Record<string, readonly string[]>
 

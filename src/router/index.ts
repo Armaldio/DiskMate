@@ -3,6 +3,7 @@ import { useConnection } from '../stores/connection'
 import HomeView from '../views/HomeView.vue'
 import ConnectView from '../views/ConnectView.vue'
 import DetailView from '../views/DetailView.vue'
+import EpisodeView from '../views/EpisodeView.vue'
 import SearchView from '../views/SearchView.vue'
 import SettingsView from '../views/SettingsView.vue'
 import LibraryView from '../views/LibraryView.vue'
@@ -16,6 +17,7 @@ const router = createRouter({
     { path: '/library', name: 'library', component: LibraryView },
     { path: '/settings', name: 'settings', component: SettingsView },
     { path: '/details/:mediaType/:source/:mediaId', name: 'details', component: DetailView },
+    { path: '/details/:mediaType/:source/:mediaId/season/:season(\\d+)/episode/:episode(\\d+)', name: 'episode', component: EpisodeView },
   ],
 })
 

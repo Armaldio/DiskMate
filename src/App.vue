@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import ScopeBanner from './components/ScopeBanner.vue'
 import { useConnection } from './stores/connection'
+import { dismissStale, isRefreshing, staleMessage } from './stores/refresh'
 
 const { connection, isConnected } = useConnection()
 </script>
@@ -20,7 +21,9 @@ const { connection, isConnected } = useConnection()
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
       </RouterLink>
     </div>
+    <div class="refresh-bar" :class="{ on: isRefreshing }" role="progressbar" aria-hidden="true" />
   </header>
   <ScopeBanner />
   <main><RouterView :key="`${connection?.localOnly ? 'local' : 'remote'}:${connection?.localOnly ? connection?.localBaseUrl : connection?.baseUrl}`" /></main>
+  <button v-if="staleMessage" class="stale-pill" role="status" @click="dismissStale">{{ staleMessage }}</button>
 </template>

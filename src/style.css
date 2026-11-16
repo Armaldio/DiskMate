@@ -76,7 +76,7 @@ input { padding:.6rem; border-radius:6px; border:1px solid #333649; background:v
 .link-action { display: inline-flex; align-items: center; min-height: 44px; padding: 0 .9rem; border: 1px solid #333649; border-radius: 12px; color: var(--muted); text-decoration: none; font-size: .9rem; }
 .synopsis { margin: 0; line-height: 1.5; color: #c9cad6; }
 .synopsis.clamp { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
-.facts { margin: 0; display: grid; gap: .1rem; background: var(--card); border-radius: 12px; padding: .25rem 1rem; }
+.facts { margin: 0; display: grid; background: var(--card); border-radius: 12px; padding: .25rem 1rem; }
 .fact { display: flex; justify-content: space-between; gap: 1rem; padding: .6rem 0; border-bottom: 1px solid #262838; }
 .fact:last-child { border-bottom: 0; }
 .fact dt { color: var(--muted); font-size: .9rem; }
@@ -117,3 +117,70 @@ input { padding:.6rem; border-radius:6px; border:1px solid #333649; background:v
 .type-chip.on .media-icon { color: #12131a !important; }
 .rail h2.with-icon { display: flex; align-items: center; gap: .5rem; }
 .card .kind-line { display: flex; align-items: center; gap: .3rem; }
+
+/* Refresh status: never in the page flow (it used to push content down) */
+.refresh-bar { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; overflow: hidden; pointer-events: none; opacity: 0; transition: opacity .25s; }
+.refresh-bar.on { opacity: 1; }
+.refresh-bar::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 40%; background: var(--accent); animation: refresh-slide 1.1s ease-in-out infinite; }
+@keyframes refresh-slide { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+@media (prefers-reduced-motion: reduce) { .refresh-bar::before { animation: none; width: 100%; opacity: .6; } }
+.stale-pill { position: fixed; z-index: 30; left: 50%; bottom: calc(1rem + env(safe-area-inset-bottom)); transform: translateX(-50%); max-width: calc(100vw - 2rem); padding: .55rem 1rem; border: 1px solid #3a3c4e; border-radius: 999px; background: #23242f; color: var(--fg); font-size: .85rem; font-weight: 500; box-shadow: 0 6px 20px rgba(0, 0, 0, .45); }
+
+/* Home headings */
+.home-section { margin-bottom: 2.75rem; }
+.section-head { display: flex; align-items: center; gap: .75rem; margin: 0 0 1rem; }
+.section-head h2 { margin: 0; font-size: 1.3rem; font-weight: 700; letter-spacing: -.01em; }
+.section-head .count { margin-left: auto; padding: .1rem .55rem; border-radius: 999px; background: #262838; color: var(--muted); font-size: .78rem; font-weight: 600; }
+.section-head.small { margin-bottom: .4rem; gap: .6rem; }
+.section-head.small h2 { font-size: 1rem; font-weight: 600; }
+.section-sub { margin: 0 0 1rem 2.4rem; font-size: .82rem; line-height: 1.4; }
+.trend-rail { margin-bottom: 2.25rem; }
+.trend-rail .section-sub { margin-left: 0; }
+
+/* Home: more room between cards, search field and sections */
+.home-section .row, .home-section .next-list { gap: 1rem; padding-bottom: .5rem; }
+.home-section .card figcaption { margin-top: .6rem; line-height: 1.3; }
+.home-search.van-search { padding: .25rem 0 1.5rem; }
+
+/* Mobile: no visible scrollbars anywhere (page, sheets, horizontal rows). Scrolling still works.
+   Width-based as well as touch-based, so a narrow desktop window behaves like a phone. */
+@media (max-width: 639px), (pointer: coarse) {
+  html, body, * { scrollbar-width: none; -ms-overflow-style: none; }
+  html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar { display: none; width: 0; height: 0; }
+}
+
+/* Selectable chips (lists, tags) */
+.chip-wrap { display: flex; flex-wrap: wrap; gap: .5rem; }
+.pick-chip { height: 34px; max-width: 100%; padding: 0 .8rem; border: 1px solid #333649; border-radius: 999px; background: transparent; color: var(--muted); font-size: 14px; font-weight: 500; line-height: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-chip.on { background: rgba(124, 140, 255, .2); border-color: var(--accent); color: var(--accent); }
+.pick-chip:disabled { opacity: .45; }
+
+/* ---- Detail sections: one design system ---- */
+/* Vant's dark theme uses neutral greys; map it onto the app's own palette so every Vant widget matches. */
+:root.van-theme-dark {
+  --van-background: #12131a;
+  --van-background-2: #1c1e29;
+  --van-background-3: #262838;
+  --van-text-color: #e8e8ee;
+  --van-text-color-2: #8b8d9c;
+  --van-text-color-3: #6c6e7d;
+  --van-border-color: #333649;
+  --van-primary-color: #7c8cff;
+  --van-gray-5: #3a3c4e;
+}
+/* every section heading on a detail page is the same */
+.detail-body h2 { margin: 0 0 .75rem; font-size: 1.1rem; font-weight: 700; letter-spacing: -.005em; }
+.detail-body { gap: 1.5rem; }
+.detail-body .rail { margin: 0; }
+.info-card { background: var(--card); border-radius: 12px; padding: .25rem 1rem; }
+.panel-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 52px; padding: .4rem 0; border-bottom: 1px solid #262838; }
+.panel-row:last-child { border-bottom: 0; }
+.panel-row .label { flex: none; color: var(--muted); font-size: .9rem; }
+.panel-row.stack { flex-direction: column; align-items: stretch; justify-content: center; gap: .6rem; padding: .8rem 0; }
+.info-card .van-stepper { --van-stepper-background: #262838; --van-stepper-input-text-color: var(--fg); --van-stepper-button-icon-color: var(--fg); --van-stepper-button-disabled-icon-color: #4a4c5e; }
+.info-card .van-checkbox { --van-checkbox-checked-icon-color: var(--accent); --van-checkbox-border-color: #4a4c5e; }
+
+/* Episode page */
+.hero .still { flex: none; width: 9.5rem; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 10px; box-shadow: 0 6px 20px rgba(0, 0, 0, .5); }
+.show-link { display: inline-block; margin-top: .35rem; color: var(--accent); font-size: .9rem; font-weight: 600; text-decoration: none; }
+.watched-line { margin: 0; color: #51cf66; font-weight: 600; font-size: .95rem; }

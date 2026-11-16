@@ -50,9 +50,36 @@ async function request(
   const res = await fetch(`${baseUrl}${path}`, options)
   if (res.status === 401) throw new Error('Invalid API token')
   if (res.status === 403) throw new InsufficientScopeError([...scopes])
-  if (!res.ok) throw new Error(`Floppy responded with HTTP ${res.status}`)
+  if (!res.ok) throw await apiError(res)
   if (res.status === 204) return null
   return res.json().catch(() => null)
+}
+
+/** A non-2xx answer from Floppy, with its validation details (e.g. `{ errors: { progress: ['…'] } }`). */
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+    /** Names of the fields Floppy rejected. */
+    public fields: string[] = [],
+  ) {
+    super(message)
+  }
+}
+
+async function apiError(res: Response): Promise<ApiError> {
+  let body: Json | null = null
+  try {
+    body = (await res.json()) as Json
+  } catch {
+    /* not JSON */
+  }
+  const errors = body?.errors && typeof body.errors === 'object' ? (body.errors as Record<string, unknown>) : {}
+  const fields = Object.keys(errors)
+  const detail = typeof body?.detail === 'string' ? body.detail : ''
+  const why = fields.map((f) => `${f}: ${[errors[f]].flat().join(' ')}`).join('; ')
+  const message = [detail, why].filter(Boolean).join(' — ') || `Floppy responded with HTTP ${res.status}`
+  return new ApiError(res.status, message, fields)
 }
 
 /** Verifies URL + token. Network/CORS failures get a friendlier message. */
@@ -362,6 +389,16 @@ export async function markMovieWatched(
   })
 }
 
+export interface TrackingEntry {
+  status: number | null
+  /** 0-10 */
+  score: number | null
+  progress: number | null
+  startDate: string | null
+  endDate: string | null
+  notes: string
+}
+
 export interface Person {
   id: string
   name: string
@@ -393,6 +430,9 @@ export interface MediaDetail {
   tracked: boolean
   /** Tracking status of the user's entry: 0 Planning (watchlist), 1 In progress, 2 Paused, 3 Completed, 4 Dropped. */
   status: number | null
+  /** The user's own tracking values (not the community score), when the item is tracked. */
+  entry: TrackingEntry | null
+  maxProgress: number | null
   sourceUrl: string | null
 }
 
@@ -449,15 +489,34 @@ export async function fetchLibrary(conn: Connection): Promise<MediaItem[]> {
   return [...items.values()]
 }
 
+/** The user's most relevant entry: a Completed one wins, else the first listed. */
+function primaryEntry(consumptions: unknown): TrackingEntry | null {
+  const rows = (Array.isArray(consumptions) ? (consumptions as Json[]) : []).filter((c) => c && typeof c === 'object')
+  if (!rows.length) return null
+  const c = rows.find((r) => r.status === 3) ?? rows[0]
+  const str = (v: unknown) => (typeof v === 'string' && v ? v : null)
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+  return {
+    status: num(c.status),
+    score: num(c.score),
+    progress: num(c.progress),
+    startDate: str(c.start_date),
+    endDate: str(c.end_date),
+    notes: typeof c.notes === 'string' ? c.notes : '',
+  }
+}
+
 export async function fetchMediaDetail(
   conn: Connection,
   mediaType: string,
   source: string,
   mediaId: string,
+  /** Override for sub-resources that return the same shape (e.g. an episode). */
+  path?: string,
 ): Promise<MediaDetail> {
   const d = (await request(
     conn,
-    `/api/v1/media/${encodeURIComponent(mediaType)}/${encodeURIComponent(source)}/${encodeURIComponent(mediaId)}/`,
+    path ?? `/api/v1/media/${encodeURIComponent(mediaType)}/${encodeURIComponent(source)}/${encodeURIComponent(mediaId)}/`,
     FEATURE_SCOPES.details,
   )) as Json
   const str = (v: unknown) => (typeof v === 'string' && v ? v : null)
@@ -489,12 +548,14 @@ export async function fetchMediaDetail(
     score: num(d.score),
     scoreCount: num(d.score_count),
     imdbRating: num(d.imdb_rating),
-    cast: people(d.cast),
-    crew: people(d.crew),
+    cast: people(d.cast).slice(0, 30), // the page shows 20; long series list ~1000 (too big to cache)
+    crew: people(d.crew).slice(0, 20),
     details: localizeImageFields(obj(d.details), conn),
     related: localizeImageFields(obj(d.related), conn),
     tracked: d.tracked === true,
     status: trackingStatus(d.consumptions),
+    entry: primaryEntry(d.consumptions),
+    maxProgress: num(d.max_progress),
     sourceUrl: str(d.source_url),
   }
 }
@@ -545,11 +606,26 @@ export async function searchMedia(
  * Returns the new tracking status.
  */
 export async function addToWatchlist(conn: Connection, d: MediaDetail): Promise<number> {
-  await request(conn, `/api/v1/media/${encodeURIComponent(d.mediaType)}/`, FEATURE_SCOPES.watchlist, {
-    method: 'POST',
-    body: { source: d.source, media_id: d.mediaId, status: 0 },
-  })
+  await createTracked(conn, d, { status: 0 })
   return 0
+}
+
+/**
+ * POST /api/v1/media/{type}/ creates the tracked entry. Some types (board games) are rejected with
+ * "progress: This field is required", so the call is retried once with progress 0.
+ */
+async function createTracked(conn: Connection, d: MediaDetail, fields: TrackingPatch): Promise<void> {
+  const path = `/api/v1/media/${encodeURIComponent(d.mediaType)}/`
+  const body = { source: d.source, media_id: d.mediaId, status: 0, ...fields }
+  try {
+    await request(conn, path, FEATURE_SCOPES.watchlist, { method: 'POST', body })
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 400 && e.fields.includes('progress') && body.progress === undefined) {
+      await request(conn, path, FEATURE_SCOPES.watchlist, { method: 'POST', body: { ...body, progress: 0 } })
+      return
+    }
+    throw e
+  }
 }
 
 /** DELETE /api/v1/media/{type}/{source}/{id}/ removes the tracked item AND all its history. */
@@ -560,4 +636,178 @@ export async function removeFromWatchlist(conn: Connection, d: MediaDetail): Pro
     FEATURE_SCOPES.watchlist,
     { method: 'DELETE' },
   )
+}
+
+export interface TrackingPatch {
+  status?: number
+  /** 0-10, or null to clear. */
+  score?: number | null
+  progress?: number
+  /** ISO date-time with a zone, or null to clear. */
+  start_date?: string | null
+  end_date?: string | null
+  notes?: string
+}
+
+/**
+ * Saves the user's tracking fields (verified live): POST creates the entry when the item isn't
+ * tracked yet (Planning unless a status is given), PATCH updates it. Sending null clears a field.
+ */
+export async function updateTracking(
+  conn: Connection,
+  d: MediaDetail,
+  patch: TrackingPatch,
+  alreadyTracked: boolean,
+): Promise<void> {
+  if (!alreadyTracked) {
+    await createTracked(conn, d, patch)
+    return
+  }
+  await request(
+    conn,
+    `/api/v1/media/${encodeURIComponent(d.mediaType)}/${encodeURIComponent(d.source)}/${encodeURIComponent(d.mediaId)}/`,
+    FEATURE_SCOPES.watchlist,
+    { method: 'PATCH', body: patch },
+  )
+}
+
+// ---- Tags, lists and Seerr (all verified against a live instance unless noted) ----
+
+const itemPath = (d: Pick<MediaDetail, 'mediaType' | 'source' | 'mediaId'>) =>
+  `/api/v1/media/${encodeURIComponent(d.mediaType)}/${encodeURIComponent(d.source)}/${encodeURIComponent(d.mediaId)}/`
+
+export interface Tag {
+  id: number
+  name: string
+}
+
+/** GET /api/v1/tags/ → all of the user's tags. */
+export async function fetchTags(conn: Connection): Promise<Tag[]> {
+  const data = (await request(conn, '/api/v1/tags/', FEATURE_SCOPES.tagsRead)) as Json | null
+  return (Array.isArray(data?.results) ? (data.results as Json[]) : []).flatMap((t): Tag[] =>
+    typeof t.id === 'number' && typeof t.name === 'string' ? [{ id: t.id, name: t.name }] : [],
+  )
+}
+
+/** POST /api/v1/tags/ {name} → the created tag. */
+export async function createTag(conn: Connection, name: string): Promise<Tag> {
+  const t = (await request(conn, '/api/v1/tags/', FEATURE_SCOPES.tagsWrite, { method: 'POST', body: { name } })) as Json | null
+  if (typeof t?.id !== 'number') throw new Error('Floppy did not return the new tag')
+  return { id: t.id, name: String(t.name ?? name) }
+}
+
+/** GET …/tags/ → ids of the tags on this item ([] when the item isn't tracked: Floppy answers 404). */
+export async function fetchItemTags(conn: Connection, d: MediaDetail): Promise<number[]> {
+  try {
+    const data = (await request(conn, `${itemPath(d)}tags/`, FEATURE_SCOPES.tagsRead)) as Json | null
+    return (Array.isArray(data?.results) ? (data.results as Json[]) : []).flatMap((t) => (typeof t.id === 'number' ? [t.id] : []))
+  } catch (e) {
+    if (e instanceof InsufficientScopeError) throw e
+    return []
+  }
+}
+
+/** PUT …/tags/ {tag_ids} replaces the item's tags. The item must already be tracked. */
+export async function setItemTags(conn: Connection, d: MediaDetail, tagIds: number[]): Promise<void> {
+  await request(conn, `${itemPath(d)}tags/`, FEATURE_SCOPES.tagsWrite, { method: 'PUT', body: { tag_ids: tagIds } })
+}
+
+export interface UserList {
+  id: number
+  name: string
+  /** Smart lists fill themselves and externally managed lists (e.g. couchmoney) must not be edited by hand. */
+  locked: boolean
+}
+
+/** GET /api/v1/lists/ → the user's lists. */
+export async function fetchLists(conn: Connection): Promise<UserList[]> {
+  const data = (await request(conn, '/api/v1/lists/?limit=100', FEATURE_SCOPES.listsRead)) as Json | null
+  return (Array.isArray(data?.results) ? (data.results as Json[]) : []).flatMap((l): UserList[] =>
+    typeof l.id === 'number' && typeof l.name === 'string'
+      ? [{ id: l.id, name: l.name, locked: l.is_smart === true || /managed by/i.test(String(l.description ?? '')) }]
+      : [],
+  )
+}
+
+/** GET …/lists/ → ids of the lists containing this item (works for untracked items too). */
+export async function fetchItemLists(conn: Connection, d: MediaDetail): Promise<number[]> {
+  const data = (await request(conn, `${itemPath(d)}lists/`, FEATURE_SCOPES.listsRead)) as Json | null
+  return (Array.isArray(data?.results) ? (data.results as Json[]) : []).flatMap((r) => (typeof r.list_id === 'number' ? [r.list_id] : []))
+}
+
+export async function addToList(conn: Connection, d: MediaDetail, listId: number): Promise<void> {
+  await request(conn, `${itemPath(d)}lists/${listId}/`, FEATURE_SCOPES.listsWrite, { method: 'PUT' })
+}
+
+export async function removeFromList(conn: Connection, d: MediaDetail, listId: number): Promise<void> {
+  await request(conn, `${itemPath(d)}lists/${listId}/`, FEATURE_SCOPES.listsWrite, { method: 'DELETE' })
+}
+
+export interface SeerrSeason {
+  number: number
+  name: string
+  status: string
+  requestable: boolean
+}
+
+export interface SeerrState {
+  /** unknown | pending | processing | partially_available | available (Jellyseerr's own words) */
+  status: string
+  requestable: boolean
+  url: string | null
+  seasons: SeerrSeason[]
+}
+
+/**
+ * GET …/request/ → the title's state in Seerr, or null when Seerr isn't configured / reachable
+ * (Floppy answers 404 "Seerr is not available."). Only a missing permission is surfaced.
+ */
+export async function fetchSeerr(conn: Connection, d: MediaDetail): Promise<SeerrState | null> {
+  try {
+    const r = (await request(conn, `${itemPath(d)}request/`, FEATURE_SCOPES.seerrRead)) as Json | null
+    if (!r || typeof r.status !== 'string') return null
+    return {
+      status: r.status,
+      requestable: r.requestable === true,
+      url: typeof r.seerr_url === 'string' ? r.seerr_url : null,
+      seasons: (Array.isArray(r.seasons) ? (r.seasons as Json[]) : []).flatMap((s): SeerrSeason[] =>
+        typeof s.number === 'number'
+          ? [{ number: s.number, name: String(s.name ?? `Season ${s.number}`), status: String(s.status ?? 'unknown'), requestable: s.requestable === true }]
+          : [],
+      ),
+    }
+  } catch (e) {
+    if (e instanceof InsufficientScopeError) throw e
+    return null
+  }
+}
+
+/**
+ * POST …/request/ asks Seerr for the title: all seasons, or only `seasons` (TV).
+ * NOT verified live: a real request starts downloads in the user's Seerr, so it was never sent in
+ * testing; the body follows Floppy's description ("all seasons, or the listed `seasons`").
+ */
+export async function requestInSeerr(conn: Connection, d: MediaDetail, seasons?: number[]): Promise<void> {
+  await request(conn, `${itemPath(d)}request/`, FEATURE_SCOPES.seerrWrite, {
+    method: 'POST',
+    body: seasons?.length ? { seasons } : {},
+  })
+}
+
+/**
+ * GET /api/v1/media/tv/{source}/{id}/{season}/{episode}/ → one episode, in the same shape as a
+ * show (title, still in `image`, synopsis, `details.air_date/runtime/guest_stars/crew`, your history).
+ * Anime episodes live in the Anime library, hence the library param.
+ */
+export function fetchEpisodeDetail(
+  conn: Connection,
+  mediaType: string,
+  source: string,
+  mediaId: string,
+  season: string,
+  episode: string,
+): Promise<MediaDetail> {
+  const lib = mediaType === 'anime' ? '?library_media_type=anime' : ''
+  const path = `/api/v1/media/tv/${encodeURIComponent(source)}/${encodeURIComponent(mediaId)}/${encodeURIComponent(season)}/${encodeURIComponent(episode)}/${lib}`
+  return fetchMediaDetail(conn, 'tv', source, mediaId, path)
 }

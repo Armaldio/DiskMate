@@ -19,6 +19,8 @@ const ICONS: Record<string, string> = {
   podcast: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/>',
   music: '<path d="M9 18V5.5l10-2V16"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>',
   video: '<circle cx="12" cy="12" r="9"/><path d="M10 8.5l5.5 3.5-5.5 3.5z"/>',
+  trending: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+  next: '<path d="M5 4.5l10 7.5-10 7.5z"/><path d="M19 5v14"/>',
 }
 const ALIAS: Record<string, string> = { season: 'tv', episode: 'tv', comicissue: 'comic' }
 

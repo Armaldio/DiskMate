@@ -3,16 +3,25 @@ import { computed, ref } from 'vue'
 import { addToWatchlist, removeFromWatchlist, type MediaDetail, type MediaItem } from '../api/floppy'
 import { InsufficientScopeError } from '../api/scopes'
 import { useConnection } from '../stores/connection'
+import { cacheKey, detailName, dropCached } from '../utils/swr'
+import { trackingWords } from '../utils/statusLabels'
 import MarkWatchedSheet from './MarkWatchedSheet.vue'
 import MediaIcon from './MediaIcon.vue'
+import TrackingPanel from './TrackingPanel.vue'
+import OrganizePanel from './OrganizePanel.vue'
+import SeerrPanel from './SeerrPanel.vue'
 import { mediaColor } from '../utils/mediaTypes'
 
 const props = defineProps<{ detail: MediaDetail }>()
 const { connection, reportMissingScopes } = useConnection()
+const dropDetailCache = () => {
+  if (connection.value)
+    dropCached(cacheKey(connection.value, detailName(props.detail.mediaType, props.detail.source, props.detail.mediaId)))
+}
 const expanded = ref(false)
 
-// Watchlist = a tracked entry with status Planning (0).
-const labels = ['On your watchlist', 'In progress', 'Paused', 'Completed', 'Dropped']
+// "Watchlist" = a tracked entry with status Planning (0). Its name follows the media: a game goes to a backlog.
+const words = computed(() => trackingWords(props.detail.mediaType))
 const tracked = ref(props.detail.tracked)
 const status = ref<number | null>(props.detail.status)
 const busy = ref(false)
@@ -20,7 +29,10 @@ const confirming = ref(false)
 const wlError = ref('')
 // Only a pure watchlist entry can be removed here: removing deletes the history too.
 const removable = computed(() => tracked.value && status.value === 0)
-const wlLabel = computed(() => (tracked.value ? labels[status.value ?? 0] ?? 'Tracked' : 'Add to watchlist'))
+const wlLabel = computed(() => {
+  if (!tracked.value) return words.value.add
+  return status.value ? (words.value.statuses[status.value] ?? 'Tracked') : words.value.on
+})
 
 async function addWl() {
   if (!connection.value) return
@@ -29,6 +41,7 @@ async function addWl() {
   try {
     status.value = await addToWatchlist(connection.value, props.detail)
     tracked.value = true
+    dropDetailCache()
   } catch (e) {
     if (e instanceof InsufficientScopeError) reportMissingScopes(e.scopes)
     else wlError.value = e instanceof Error ? e.message : String(e)
@@ -45,6 +58,7 @@ async function removeWl() {
     await removeFromWatchlist(connection.value, props.detail)
     tracked.value = false
     status.value = null
+    dropDetailCache()
   } catch (e) {
     if (e instanceof InsufficientScopeError) reportMissingScopes(e.scopes)
     else wlError.value = e instanceof Error ? e.message : String(e)
@@ -125,12 +139,22 @@ const movie = computed<MediaItem | null>(() =>
         {{ detail.synopsis }}
       </p>
 
+      <TrackingPanel
+        :detail="detail"
+        :tracked="tracked"
+        @saved="(st) => { tracked = true; status = st }"
+      />
+
+      <OrganizePanel :detail="detail" :tracked="tracked" @tracked="() => { tracked = true; status = status ?? 0 }" />
+
+      <SeerrPanel :detail="detail" />
+
       <slot />
     </div>
 
     <van-dialog
       v-model:show="confirming"
-      title="Remove from watchlist?"
+      :title="`Remove from ${words.list}?`"
       message="It will no longer be tracked."
       show-cancel-button
       confirm-button-text="Remove"
